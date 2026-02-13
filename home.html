@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>A Tiny Quest for You ❤️</title>
+    <style>
+        :root {
+            --pink: #ff85a2;
+            --dark-pink: #ff4d6d;
+            --sky: #fff0f3;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: var(--sky);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #game-ui {
+            text-align: center;
+            margin-bottom: 10px;
+            z-index: 10;
+        }
+
+        h1 { color: var(--dark-pink); margin: 5px 0; font-size: 24px; }
+        p { color: #888; margin: 0; font-size: 14px; }
+
+        canvas {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(255, 77, 109, 0.2);
+            border: 4px solid white;
+            max-width: 95vw;
+        }
+
+        /* Mobile Controls */
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        .btn {
+            width: 60px;
+            height: 60px;
+            background: white;
+            border: 2px solid var(--pink);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            user-select: none;
+            cursor: pointer;
+            box-shadow: 0 4px 0 var(--pink);
+        }
+        .btn:active { transform: translateY(3px); box-shadow: none; }
+
+        /* Proposal Overlay */
+        #proposal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 25px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.2);
+            z-index: 100;
+            text-align: center;
+            width: 280px;
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .choice-btn {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 50px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        #yesBtn { background: var(--dark-pink); color: white; }
+        #noBtn { background: #eee; color: #666; position: relative; }
+
+        #finalMessage {
+            display: none;
+            font-size: 22px;
+            color: var(--dark-pink);
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        .cat-gif { width: 120px; }
+    </style>
+</head>
+<body>
+
+    <div id="game-ui">
+        <h1>Heart Jumper 💖</h1>
+        <p>Reach the big heart to see your surprise!</p>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="controls">
+        <div class="btn" id="leftBtn">⬅️</div>
+        <div class="btn" id="jumpBtn">⬆️</div>
+        <div class="btn" id="rightBtn">➡️</div>
+    </div>
+
+    <div id="proposal">
+        <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGl0eHBlOHRnd28zZ3A0d3RreHh3dzZ6eGZ6eGZ6eGZ6eGZ6ZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/cLS1cfxvGOPVpf9g3y/giphy.gif" class="cat-gif">
+        <h2>You made it! 🏆</h2>
+        <p>I have a very important question...</p>
+        <h1 style="font-size: 24px; color: var(--dark-pink);">Will you be my Valentine?</h1>
+        
+        <div class="btn-group">
+            <button class="choice-btn" id="yesBtn">YES!</button>
+            <button class="choice-btn" id="noBtn">No</button>
+        </div>
+        <div id="finalMessage">Yay! Best Valentine ever! ❤️✨</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = 400;
+        canvas.height = 300;
+
+        // Game Constants
+        const gravity = 0.5;
+        const friction = 0.8;
+        const jumpStrength = -10;
+        const moveSpeed = 4;
+
+        let player = {
+            x: 30,
+            y: 200,
+            width: 25,
+            height: 25,
+            velX: 0,
+            velY: 0,
+            jumping: false,
+            color: '#ff85a2'
+        };
+
+        let platforms = [
+            { x: 0, y: 280, w: 150, h: 20 },      // Start
+            { x: 180, y: 230, w: 100, h: 15 },    // Mid 1
+            { x: 50, y: 170, w: 80, h: 15 },     // Mid 2
+            { x: 180, y: 120, w: 100, h: 15 },    // Mid 3
+            { x: 320, y: 80, w: 80, h: 220 },    // Goal Tower
+        ];
+
+        let hazards = [
+            { x: 185, y: 220, w: 15, h: 10 }, // Spike on platform 1
+            { x: 60, y: 160, w: 15, h: 10 },  // Spike on platform 2
+        ];
+
+        let goal = { x: 345, y: 30, w: 30, h: 30 };
+
+        let keys = {};
+        let gameActive = true;
+
+        // Input Listeners
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Mobile Button Logic
+        const setupMobileBtn = (id, key) => {
+            const btn = document.getElementById(id);
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[key] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[key] = false; });
+            btn.addEventListener('mousedown', () => keys[key] = true);
+            btn.addEventListener('mouseup', () => keys[key] = false);
+        };
+        setupMobileBtn('leftBtn', 'ArrowLeft');
+        setupMobileBtn('rightBtn', 'ArrowRight');
+        setupMobileBtn('jumpBtn', 'Space');
+
+        function update() {
+            if (!gameActive) return;
+
+            // Movement
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                if (player.velX < moveSpeed) player.velX++;
+            }
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                if (player.velX > -moveSpeed) player.velX--;
+            }
+            if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && !player.jumping) {
+                player.velY = jumpStrength;
+                player.jumping = true;
+            }
+
+            player.velX *= friction;
+            player.velY += gravity;
+
+            player.x += player.velX;
+            player.y += player.velY;
+
+            // Ground Collision
+            if (player.y >= canvas.height) {
+                resetPlayer();
+            }
+
+            // Platform Collision
+            player.jumping = true;
+            for (let plat of platforms) {
+                if (player.x < plat.x + plat.w &&
+                    player.x + player.width > plat.x &&
+                    player.y < plat.y + plat.h &&
+                    player.y + player.height > plat.y) {
+                    
+                    if (player.velY > 0) {
+                        player.jumping = false;
+                        player.velY = 0;
+                        player.y = plat.y - player.height;
+                    }
+                }
+            }
+
+            // Hazard Collision
+            for (let spike of hazards) {
+                if (player.x < spike.x + spike.w &&
+                    player.x + player.width > spike.x &&
+                    player.y < spike.y + spike.h &&
+                    player.y + player.height > spike.y) {
+                    resetPlayer();
+                }
+            }
+
+            // Goal Collision
+            if (player.x < goal.x + goal.w &&
+                player.x + player.width > goal.x &&
+                player.y < goal.y + goal.h &&
+                player.y + player.height > goal.y) {
+                win();
+            }
+
+            // Screen Bounds
+            if (player.x <= 0) player.x = 0;
+            if (player.x >= canvas.width - player.width) player.x = canvas.width - player.width;
+        }
+
+        function resetPlayer() {
+            player.x = 30;
+            player.y = 200;
+            player.velX = 0;
+            player.velY = 0;
+        }
+
+        function win() {
+            gameActive = false;
+            document.getElementById('proposal').style.display = 'block';
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Platforms
+            ctx.fillStyle = '#ffb3c1';
+            for (let plat of platforms) {
+                ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
+            }
+
+            // Draw Hazards (Spikes)
+            ctx.fillStyle = '#ff4d6d';
+            for (let spike of hazards) {
+                ctx.beginPath();
+                ctx.moveTo(spike.x, spike.y + spike.h);
+                ctx.lineTo(spike.x + spike.w / 2, spike.y);
+                ctx.lineTo(spike.x + spike.w, spike.y + spike.h);
+                ctx.fill();
+            }
+
+            // Draw Goal
+            ctx.font = '30px serif';
+            ctx.fillText('💝', goal.x, goal.y + 25);
+
+            // Draw Player
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.roundRect(player.x, player.y, player.width, player.height, 5);
+            ctx.fill();
+            // Player eyes
+            ctx.fillStyle = "white";
+            ctx.fillRect(player.x + 5, player.y + 5, 4, 4);
+            ctx.fillRect(player.x + 15, player.y + 5, 4, 4);
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        // Runaway "No" Button
+        const noBtn = document.getElementById('noBtn');
+        noBtn.addEventListener('mouseover', () => {
+            const x = Math.random() * (window.innerWidth - 100);
+            const y = Math.random() * (window.innerHeight - 50);
+            noBtn.style.position = 'fixed';
+            noBtn.style.left = x + 'px';
+            noBtn.style.top = y + 'px';
+        });
+
+        document.getElementById('yesBtn').addEventListener('click', () => {
+            document.querySelector('.btn-group').style.display = 'none';
+            document.getElementById('finalMessage').style.display = 'block';
+        });
+
+        draw();
+    </script>
+</body>
+</html>
